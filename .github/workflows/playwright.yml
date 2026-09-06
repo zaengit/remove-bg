@@ -32,6 +32,8 @@ jobs:
   inference:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      VITE_DEV_CROSS_ORIGIN_ISOLATION: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,7 +45,7 @@ jobs:
         run: npm run models:download
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run real MobileSAM inference test
+      - name: Run real MobileSAM inference test without cross-origin isolation
         run: npm run test:e2e:inference
       - name: Upload Playwright report
         if: always()
