@@ -1,4 +1,4 @@
-import { MobileSamOnnxModel } from './model';
+import { DirectMobileSamOnnxModel } from './direct-model';
 import type { BoundingBox, ImageEmbedding, PromptPoint } from '../../types/editor';
 
 type Request =
@@ -9,7 +9,7 @@ type Request =
 type Success = { id: number; ok: true; result?: unknown };
 type Failure = { id: number; ok: false; error: string };
 
-const model = new MobileSamOnnxModel();
+const model = new DirectMobileSamOnnxModel();
 const embeddings = new Map<string, ImageEmbedding>();
 let embeddingCounter = 0;
 
@@ -52,19 +52,12 @@ self.onmessage = async (event: MessageEvent<Request>) => {
 
     const embedding = embeddings.get(message.workerKey);
     if (!embedding) throw new Error('Image embedding is no longer available. Re-upload the image.');
-    const result = await model.predictMask({
-      embedding,
-      points: message.points,
-      box: message.box,
-    });
+    const result = await model.predictMask({ embedding, points: message.points, box: message.box });
     self.postMessage(
       {
         id: message.id,
         ok: true,
-        result: {
-          ...result,
-          mask: result.mask.buffer,
-        },
+        result: { ...result, mask: result.mask.buffer },
       } satisfies Success,
       [result.mask.buffer],
     );
