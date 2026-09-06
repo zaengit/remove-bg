@@ -21,17 +21,9 @@ function configureWasmRuntime() {
 async function createSession(url: string): Promise<ort.InferenceSession> {
   configureWasmRuntime();
 
-  try {
-    if ('gpu' in navigator) {
-      return await ort.InferenceSession.create(url, {
-        executionProviders: ['webgpu'],
-        graphOptimizationLevel: 'all',
-      });
-    }
-  } catch (error) {
-    console.warn('WebGPU ONNX failed; falling back to WASM.', error);
-  }
-
+  // MobileSAM is intentionally pinned to WASM for stability. Some browser/GPU
+  // combinations can create a WebGPU session successfully but fail later during
+  // decoder execution with opaque ORT internals such as "reading 'Kd'".
   return ort.InferenceSession.create(url, {
     executionProviders: ['wasm'],
     graphOptimizationLevel: 'all',
@@ -150,6 +142,7 @@ export class DirectMobileSamOnnxModel implements InteractiveSegmentationModel {
     this.decoder = await createSession(samOnnxConfig.decoderUrl);
 
     console.info('SAM encoder contract', {
+      backend: 'wasm',
       inputs: this.encoder.inputNames,
       inputMetadata: this.encoder.inputMetadata,
       outputs: this.encoder.outputNames,
@@ -157,7 +150,7 @@ export class DirectMobileSamOnnxModel implements InteractiveSegmentationModel {
       wasmPaths: ort.env.wasm.wasmPaths,
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
     });
-    console.info('SAM decoder contract', { inputs: this.decoder.inputNames, outputs: this.decoder.outputNames });
+    console.info('SAM decoder contract', { backend: 'wasm', inputs: this.decoder.inputNames, outputs: this.decoder.outputNames });
   }
 
   async encodeImage(image: ImageBitmap): Promise<ImageEmbedding> {
