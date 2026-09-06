@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Download pinned MobileSAM models
+        run: npm run models:download
+
       - name: Build
         run: npm run build
 
