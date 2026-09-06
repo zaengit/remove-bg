@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "npm run wasm:build && tsc -b && vite build",
     "preview": "vite preview",
-    "test:e2e": "playwright test",
+    "models:download": "node scripts/download-models.mjs",
+    "test:e2e": "playwright test tests/e2e/editor.spec.ts",
+    "test:e2e:inference": "playwright test tests/e2e/inference.spec.ts",
     "test:e2e:report": "playwright show-report",
     "wasm:build": "wasm-pack build wasm --target web --out-dir ../src/lib/wasm/pkg",
     "wasm:build:dev": "wasm-pack build wasm --target web --dev --out-dir ../src/lib/wasm/pkg"
