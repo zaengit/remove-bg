@@ -8,15 +8,18 @@ import type {
 } from '../../types/editor';
 import { samOnnxConfig } from './config';
 
-async function createSession(url: string): Promise<ort.InferenceSession> {
-  // SharedArrayBuffer-backed WASM threads require cross-origin isolation.
-  // GitHub Pages/custom domains normally do not provide COOP/COEP headers,
-  // so forcing multiple threads makes ORT's WASM backend fail during init.
-  const isolated = globalThis.crossOriginIsolated === true;
-  ort.env.wasm.numThreads = isolated
+function configureWasmRuntime() {
+  const appBase = new URL(import.meta.env.BASE_URL, globalThis.location.origin);
+  ort.env.wasm.wasmPaths = new URL('ort/', appBase).href;
+  ort.env.wasm.proxy = false;
+  ort.env.wasm.numThreads = globalThis.crossOriginIsolated === true
     ? Math.min(4, navigator.hardwareConcurrency || 1)
     : 1;
   ort.env.wasm.simd = true;
+}
+
+async function createSession(url: string): Promise<ort.InferenceSession> {
+  configureWasmRuntime();
 
   try {
     if ('gpu' in navigator) {
@@ -143,15 +146,15 @@ export class DirectMobileSamOnnxModel implements InteractiveSegmentationModel {
   private decoder?: ort.InferenceSession;
 
   async load() {
-    [this.encoder, this.decoder] = await Promise.all([
-      createSession(samOnnxConfig.encoderUrl),
-      createSession(samOnnxConfig.decoderUrl),
-    ]);
+    this.encoder = await createSession(samOnnxConfig.encoderUrl);
+    this.decoder = await createSession(samOnnxConfig.decoderUrl);
+
     console.info('SAM encoder contract', {
       inputs: this.encoder.inputNames,
       inputMetadata: this.encoder.inputMetadata,
       outputs: this.encoder.outputNames,
       wasmThreads: ort.env.wasm.numThreads,
+      wasmPaths: ort.env.wasm.wasmPaths,
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
     });
     console.info('SAM decoder contract', { inputs: this.decoder.inputNames, outputs: this.decoder.outputNames });
