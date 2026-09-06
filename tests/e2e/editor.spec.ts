@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-const png2x2 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHgQCAcU8z7sAAAAASUVORK5CYII=',
+const png16x16 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVR4nGP8z8Dwn4ECwESJ5lEDRg0YNWAwGQAAWG0CHvXMz6IAAAAASUVORK5CYII=',
   'base64',
 );
 
@@ -30,7 +30,7 @@ test.describe('Remove BG editor', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: 'sample.png',
       mimeType: 'image/png',
-      buffer: png2x2,
+      buffer: png16x16,
     });
 
     await expect(page.getByText('Upload an image to start')).toBeHidden();
@@ -52,7 +52,6 @@ test.describe('Remove BG editor', () => {
     await page.getByTitle('Undo').click();
     await page.getByTitle('Redo').click();
 
-    await page.getByRole('button').filter({ has: page.locator('svg') }).nth(0).count();
     expect(pageErrors).toEqual([]);
   });
 
@@ -61,11 +60,11 @@ test.describe('Remove BG editor', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: 'sample.png',
       mimeType: 'image/png',
-      buffer: png2x2,
+      buffer: png16x16,
     });
 
+    await expect(page.getByRole('button', { name: 'Fit' })).toBeVisible();
     await expect(page.getByText('100%')).toBeVisible();
-    await page.locator('button').filter({ has: page.locator('svg') }).evaluateAll(() => undefined);
 
     const zoomIn = page.locator('section button').filter({ has: page.locator('svg') }).nth(1);
     await zoomIn.click();
