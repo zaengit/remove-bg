@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run wasm:build && tsc -b && vite build",
+    "build": "npm run ort:copy && npm run wasm:build && tsc -b && vite build",
     "preview": "vite preview",
+    "postinstall": "npm run ort:copy",
+    "ort:copy": "node scripts/copy-ort-runtime.mjs",
     "models:download": "node scripts/download-models.mjs",
     "test:e2e": "playwright test tests/e2e/editor.spec.ts",
     "test:e2e:inference": "playwright test tests/e2e/inference.spec.ts",
@@ -17,7 +19,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
-    "onnxruntime-web": "latest",
+    "onnxruntime-web": "1.29.0",
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest"
