@@ -12,3 +12,53 @@ button, input { font: inherit; }
   background-size: 24px 24px;
   background-position: 0 0,0 12px,12px -12px,-12px 0;
 }
+
+/* Mobile/tablet action bar.
+   The desktop Selection panel is hidden below lg by Tailwind. Keep its actions
+   available on smaller screens without covering the editor with all sliders. */
+@media (max-width: 1023px) {
+  main > aside:last-child {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 64px;
+    z-index: 40;
+    width: 100% !important;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(255,255,255,.1);
+    background: rgba(10,10,10,.96);
+    padding: 8px !important;
+    backdrop-filter: blur(12px);
+  }
+
+  main > aside:last-child > h3,
+  main > aside:last-child > p,
+  main > aside:last-child > label {
+    display: none !important;
+  }
+
+  main > aside:last-child > div {
+    display: flex !important;
+    flex: 1 0 auto;
+    gap: 8px !important;
+    margin-top: 0 !important;
+  }
+
+  main > aside:last-child > div > button,
+  main > aside:last-child > button {
+    width: auto !important;
+    min-width: max-content;
+    margin-top: 0 !important;
+    padding: 9px 12px !important;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  main > aside:last-child { bottom: 0; }
+}
