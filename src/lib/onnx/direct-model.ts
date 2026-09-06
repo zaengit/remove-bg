@@ -9,7 +9,13 @@ import type {
 import { samOnnxConfig } from './config';
 
 async function createSession(url: string): Promise<ort.InferenceSession> {
-  ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 1);
+  // SharedArrayBuffer-backed WASM threads require cross-origin isolation.
+  // GitHub Pages/custom domains normally do not provide COOP/COEP headers,
+  // so forcing multiple threads makes ORT's WASM backend fail during init.
+  const isolated = globalThis.crossOriginIsolated === true;
+  ort.env.wasm.numThreads = isolated
+    ? Math.min(4, navigator.hardwareConcurrency || 1)
+    : 1;
   ort.env.wasm.simd = true;
 
   try {
@@ -145,6 +151,8 @@ export class DirectMobileSamOnnxModel implements InteractiveSegmentationModel {
       inputs: this.encoder.inputNames,
       inputMetadata: this.encoder.inputMetadata,
       outputs: this.encoder.outputNames,
+      wasmThreads: ort.env.wasm.numThreads,
+      crossOriginIsolated: globalThis.crossOriginIsolated === true,
     });
     console.info('SAM decoder contract', { inputs: this.decoder.inputNames, outputs: this.decoder.outputNames });
   }
