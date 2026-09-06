@@ -25,6 +25,30 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-smoke
+          path: playwright-report/
+          retention-days: 7
+
+  inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Download pinned MobileSAM models
+        run: npm run models:download
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run real MobileSAM inference test
+        run: npm run test:e2e:inference
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-inference
           path: playwright-report/
           retention-days: 7
