@@ -48,16 +48,30 @@ function resolveName(
   throw new Error(`Could not identify ${label}. Available: ${available.join(', ')}`);
 }
 
-function resizeImage(image: ImageBitmap, size: number) {
+function resizedDimensions(image: ImageBitmap, size: number) {
   const scale = size / Math.max(image.width, image.height);
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
+  return {
+    scale,
+    width: Math.max(1, Math.round(image.width * scale)),
+    height: Math.max(1, Math.round(image.height * scale)),
+  };
+}
+
+function readResizedRgba(image: ImageBitmap, width: number, height: number) {
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('OffscreenCanvas 2D context is unavailable.');
+  ctx.drawImage(image, 0, 0, width, height);
+  return ctx.getImageData(0, 0, width, height).data;
+}
+
+function readPaddedRgba(image: ImageBitmap, size: number, width: number, height: number) {
   const canvas = new OffscreenCanvas(size, size);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('OffscreenCanvas 2D context is unavailable.');
   ctx.clearRect(0, 0, size, size);
   ctx.drawImage(image, 0, 0, width, height);
-  return { data: ctx.getImageData(0, 0, size, size).data, scale };
+  return ctx.getImageData(0, 0, size, size).data;
 }
 
 function toNchw(data: Uint8ClampedArray, size: number) {
@@ -69,6 +83,16 @@ function toNchw(data: Uint8ClampedArray, size: number) {
     out[i] = (data[i * 4] - mean[0]) / std[0];
     out[plane + i] = (data[i * 4 + 1] - mean[1]) / std[1];
     out[plane * 2 + i] = (data[i * 4 + 2] - mean[2]) / std[2];
+  }
+  return out;
+}
+
+function toHwcRgbFloat32(data: Uint8ClampedArray) {
+  const out = new Float32Array((data.length / 4) * 3);
+  for (let src = 0, dst = 0; src < data.length; src += 4) {
+    out[dst++] = data[src];
+    out[dst++] = data[src + 1];
+    out[dst++] = data[src + 2];
   }
   return out;
 }
@@ -117,7 +141,11 @@ export class DirectMobileSamOnnxModel implements InteractiveSegmentationModel {
       createSession(samOnnxConfig.encoderUrl),
       createSession(samOnnxConfig.decoderUrl),
     ]);
-    console.info('SAM encoder contract', { inputs: this.encoder.inputNames, outputs: this.encoder.outputNames });
+    console.info('SAM encoder contract', {
+      inputs: this.encoder.inputNames,
+      inputMetadata: this.encoder.inputMetadata,
+      outputs: this.encoder.outputNames,
+    });
     console.info('SAM decoder contract', { inputs: this.decoder.inputNames, outputs: this.decoder.outputNames });
   }
 
@@ -125,8 +153,27 @@ export class DirectMobileSamOnnxModel implements InteractiveSegmentationModel {
     if (!this.encoder) throw new Error('AI model is not loaded.');
     const inputName = resolveName(this.encoder.inputNames, samOnnxConfig.encoderInput, ['input_image', 'images', 'image', 'pixel_values'], 'encoder image input') ?? this.encoder.inputNames[0];
     const outputName = resolveName(this.encoder.outputNames, samOnnxConfig.encoderOutput, ['image_embeddings', 'image_embedding', 'embeddings'], 'encoder embedding output', false) ?? this.encoder.outputNames[0];
-    const { data, scale } = resizeImage(image, samOnnxConfig.inputSize);
-    const input = new ort.Tensor('float32', toNchw(data, samOnnxConfig.inputSize), [1, 3, samOnnxConfig.inputSize, samOnnxConfig.inputSize]);
+    const inputIndex = this.encoder.inputNames.indexOf(inputName);
+    const metadata = this.encoder.inputMetadata[inputIndex];
+    if (!metadata?.isTensor) throw new Error(`Encoder input '${inputName}' is not a tensor.`);
+
+    const { scale, width, height } = resizedDimensions(image, samOnnxConfig.inputSize);
+    let input: ort.Tensor;
+
+    if (metadata.shape.length === 3) {
+      const rgba = readResizedRgba(image, width, height);
+      input = new ort.Tensor('float32', toHwcRgbFloat32(rgba), [height, width, 3]);
+    } else if (metadata.shape.length === 4) {
+      const rgba = readPaddedRgba(image, samOnnxConfig.inputSize, width, height);
+      input = new ort.Tensor(
+        'float32',
+        toNchw(rgba, samOnnxConfig.inputSize),
+        [1, 3, samOnnxConfig.inputSize, samOnnxConfig.inputSize],
+      );
+    } else {
+      throw new Error(`Unsupported encoder input rank ${metadata.shape.length} for '${inputName}'. Shape: [${metadata.shape.join(', ')}]`);
+    }
+
     const output = await this.encoder.run({ [inputName]: input });
     const tensor = output[outputName];
     if (!tensor) throw new Error(`Encoder output '${outputName}' was not returned.`);
