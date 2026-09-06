@@ -1,9 +1,30 @@
 import { expect, test } from '@playwright/test';
 
-const syntheticSquare = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAAC0UlEQVR4nO3VsQ0DAQzDwDjI/iv7d/gULng3gRpCs7sfqPpeD4BLAiBNAKQJgDQBkCYA0gRAmgBIEwBpAiBNAKQJgDQBkCYA0gRAmgBIEwBpAiBNAKQJgDQBkCYA0gRAmgBIEwBpAiBNAKQJgDQBkCYA0gRAmgBIEwBpAiBNAKQJgDQBkCYA0gRAmgBIEwBpAiBNAKQJgDQBkCYA0gRAmgBIEwBpAiBNAKQJgDQBkCYA0gRAmgRA2u96wL9m5npC3e5eT3jPA5AmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYC02d3rDXDGA5AmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIgTQCkCYA0AZAmANIEQJoASBMAaQIg7QHrVgr7LPh0aAAAAABJRU5ErkJggg==',
-  'base64',
-);
+async function uploadSyntheticSquare(page: import('@playwright/test').Page) {
+  await page.locator('input[type="file"]').evaluate(async (input) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable in test.');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(64, 64, 128, 128);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error('PNG encoding failed.')), 'image/png');
+    });
+
+    const file = new File([blob], 'synthetic-square.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const fileInput = input as HTMLInputElement;
+    fileInput.files = transfer.files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
 
 test.describe('MobileSAM real inference', () => {
   test.setTimeout(180_000);
@@ -15,12 +36,7 @@ test.describe('MobileSAM real inference', () => {
     await page.goto('/');
     await expect(page.getByText('AI ready')).toBeVisible({ timeout: 120_000 });
 
-    await page.locator('input[type="file"]').setInputFiles({
-      name: 'synthetic-square.png',
-      mimeType: 'image/png',
-      buffer: syntheticSquare,
-    });
-
+    await uploadSyntheticSquare(page);
     await expect(page.getByText('Ready — Smart Select an object')).toBeVisible({ timeout: 120_000 });
 
     const canvas = page.locator('canvas');
