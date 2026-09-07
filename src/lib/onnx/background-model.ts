@@ -1,6 +1,6 @@
 import * as ort from 'onnxruntime-web';
 
-const INPUT_SIZE = 1024;
+const INPUT_SIZE = 320;
 const MEAN = [0.485, 0.456, 0.406] as const;
 const STD = [0.229, 0.224, 0.225] as const;
 
@@ -28,8 +28,6 @@ function preprocess(image: ImageBitmap) {
   const plane = INPUT_SIZE * INPUT_SIZE;
   const values = new Float32Array(plane * 3);
 
-  // BiRefNet preprocessing follows its published Transformers.js processor:
-  // resize 1024x1024, rescale RGB to 0..1, then ImageNet normalize.
   for (let i = 0; i < plane; i++) {
     values[i] = (rgba[i * 4] / 255 - MEAN[0]) / STD[0];
     values[plane + i] = (rgba[i * 4 + 1] / 255 - MEAN[1]) / STD[1];
@@ -44,33 +42,32 @@ function tensorToFloat32(tensor: ort.Tensor) {
   return Float32Array.from(tensor.data as ArrayLike<number>);
 }
 
-function sigmoid(value: number) {
-  if (value >= 0) {
-    const z = Math.exp(-value);
-    return 1 / (1 + z);
-  }
-  const z = Math.exp(value);
-  return z / (1 + z);
-}
-
 function postprocessMask(tensor: ort.Tensor, width: number, height: number) {
   const dims = tensor.dims.map(Number);
-  if (dims.length < 2) throw new Error(`Unexpected BiRefNet output shape: [${dims.join(', ')}]`);
+  if (dims.length < 2) throw new Error(`Unexpected U2NetP output shape: [${dims.join(', ')}]`);
 
   const maskHeight = dims[dims.length - 2];
   const maskWidth = dims[dims.length - 1];
   const pixels = maskWidth * maskHeight;
   const raw = tensorToFloat32(tensor);
-  if (raw.length < pixels) throw new Error('BiRefNet output tensor is smaller than expected.');
+  if (raw.length < pixels) throw new Error('U2NetP output tensor is smaller than expected.');
 
-  // BiRefNet outputs logits. Convert them to a soft alpha matte with sigmoid,
-  // matching the official Transformers.js example.
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < pixels; i++) {
+    const value = raw[i];
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  const range = Math.max(1e-8, max - min);
+
   const source = new OffscreenCanvas(maskWidth, maskHeight);
   const sourceCtx = source.getContext('2d');
   if (!sourceCtx) throw new Error('OffscreenCanvas 2D context is unavailable.');
   const maskImage = sourceCtx.createImageData(maskWidth, maskHeight);
+
   for (let i = 0; i < pixels; i++) {
-    const alpha = Math.max(0, Math.min(255, Math.round(sigmoid(raw[i]) * 255)));
+    const alpha = Math.max(0, Math.min(255, Math.round(((raw[i] - min) / range) * 255)));
     maskImage.data[i * 4] = alpha;
     maskImage.data[i * 4 + 1] = alpha;
     maskImage.data[i * 4 + 2] = alpha;
@@ -84,6 +81,7 @@ function postprocessMask(tensor: ort.Tensor, width: number, height: number) {
   targetCtx.imageSmoothingEnabled = true;
   targetCtx.imageSmoothingQuality = 'high';
   targetCtx.drawImage(source, 0, 0, width, height);
+
   const resized = targetCtx.getImageData(0, 0, width, height).data;
   const mask = new Uint8Array(width * height);
   for (let i = 0; i < mask.length; i++) mask[i] = resized[i * 4];
@@ -100,22 +98,23 @@ export class BackgroundRemovalOnnxModel {
 
   async load() {
     configureWasmRuntime();
+    const modelUrl = appUrl('models/u2netp.onnx');
 
     const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
     if (hasWebGpu) {
       try {
-        this.session = await ort.InferenceSession.create(appUrl('models/birefnet-lite-fp16.onnx'), {
+        this.session = await ort.InferenceSession.create(modelUrl, {
           executionProviders: ['webgpu'],
           graphOptimizationLevel: 'all',
         });
         this.backend = 'webgpu';
         return;
       } catch (error) {
-        console.warn('BiRefNet WebGPU initialization failed, falling back to WASM.', error);
+        console.warn('U2NetP WebGPU initialization failed, falling back to WASM.', error);
       }
     }
 
-    this.session = await ort.InferenceSession.create(appUrl('models/birefnet-lite-fp32.onnx'), {
+    this.session = await ort.InferenceSession.create(modelUrl, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
     });
@@ -127,12 +126,12 @@ export class BackgroundRemovalOnnxModel {
 
     const inputName = this.session.inputNames[0];
     const outputName = this.session.outputNames[0];
-    if (!inputName || !outputName) throw new Error('BiRefNet model has an invalid input/output contract.');
+    if (!inputName || !outputName) throw new Error('U2NetP model has an invalid input/output contract.');
 
     const input = preprocess(image);
     const outputs = await this.session.run({ [inputName]: input });
     const output = outputs[outputName];
-    if (!output) throw new Error(`BiRefNet output '${outputName}' was not returned.`);
+    if (!output) throw new Error(`U2NetP output '${outputName}' was not returned.`);
 
     return postprocessMask(output, image.width, image.height);
   }
