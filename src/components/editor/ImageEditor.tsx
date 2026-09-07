@@ -4,6 +4,12 @@ import { BackgroundRemovalOnnxModel } from '../../lib/onnx/background-model';
 
 const model = new BackgroundRemovalOnnxModel();
 
+type ResultStats = {
+  transparentRatio: number;
+  opaqueRatio: number;
+  softRatio: number;
+};
+
 export function ImageEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -17,6 +23,7 @@ export function ImageEditor() {
   const [isModelReady, setIsModelReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasResult, setHasResult] = useState(false);
+  const [resultStats, setResultStats] = useState<ResultStats | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -73,6 +80,7 @@ export function ImageEditor() {
   const loadImage = async (file: File) => {
     setError(null);
     setHasResult(false);
+    setResultStats(null);
 
     if (file.size > 50 * 1024 * 1024) {
       setError('Image is too large (50 MB maximum).');
@@ -113,12 +121,25 @@ export function ImageEditor() {
     try {
       const mask = await model.removeBackground(bitmap);
       const output = new ImageData(new Uint8ClampedArray(original.data), original.width, original.height);
+      let transparent = 0;
+      let opaque = 0;
+      let soft = 0;
 
       for (let i = 0; i < mask.length; i++) {
         const originalAlpha = original.data[i * 4 + 3];
-        output.data[i * 4 + 3] = Math.round((originalAlpha * mask[i]) / 255);
+        const alpha = Math.round((originalAlpha * mask[i]) / 255);
+        output.data[i * 4 + 3] = alpha;
+        if (alpha <= 16) transparent++;
+        else if (alpha >= 239) opaque++;
+        else soft++;
       }
 
+      const total = Math.max(1, mask.length);
+      setResultStats({
+        transparentRatio: transparent / total,
+        opaqueRatio: opaque / total,
+        softRatio: soft / total,
+      });
       currentRef.current = output;
       setHasResult(true);
       setStatus(`Background removed · ${model.activeBackend.toUpperCase()}`);
@@ -174,7 +195,13 @@ export function ImageEditor() {
 
       <main className="flex min-h-0 flex-1 flex-col">
         <section ref={hostRef} className="checkerboard relative min-h-0 flex-1 overflow-hidden">
-          <canvas ref={canvasRef} className="absolute inset-0" />
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0"
+            data-transparent-ratio={resultStats?.transparentRatio.toFixed(4) ?? ''}
+            data-opaque-ratio={resultStats?.opaqueRatio.toFixed(4) ?? ''}
+            data-soft-ratio={resultStats?.softRatio.toFixed(4) ?? ''}
+          />
 
           {!hasImage && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
