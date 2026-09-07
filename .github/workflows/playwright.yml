@@ -19,7 +19,7 @@ jobs:
         run: npm install
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run Playwright tests
+      - name: Run editor and PWA Playwright tests
         run: npm run test:e2e
       - name: Upload Playwright report
         if: always()
@@ -41,11 +41,11 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Download pinned MobileSAM models
+      - name: Download pinned U2NetP model
         run: npm run models:download
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run real MobileSAM inference test without cross-origin isolation
+      - name: Run real U2NetP inference and cache tests
         run: npm run test:e2e:inference
       - name: Upload Playwright report
         if: always()
