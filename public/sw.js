@@ -1,8 +1,8 @@
-const MODEL_VERSION = '309c8469';
-const APP_VERSION = 'pwa-v1';
+const MODEL_VERSION = '7bad6522';
+const APP_VERSION = 'pwa-v2';
 const MODEL_CACHE = `remove-bg-models-${MODEL_VERSION}`;
 const APP_CACHE = `remove-bg-app-${APP_VERSION}`;
-const MODEL_FILE = `/models/u2netp-${MODEL_VERSION}.onnx`;
+const MODEL_FILE = `/models/modnet-uint8-${MODEL_VERSION}.onnx`;
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
