@@ -90,7 +90,7 @@ function postprocessMask(tensor: ort.Tensor, width: number, height: number) {
 
 export class BackgroundRemovalOnnxModel {
   private session?: ort.InferenceSession;
-  private backend: 'webgpu' | 'wasm' = 'wasm';
+  private backend: 'wasm' = 'wasm';
 
   get activeBackend() {
     return this.backend;
@@ -100,25 +100,13 @@ export class BackgroundRemovalOnnxModel {
     configureWasmRuntime();
     const modelUrl = appUrl('models/u2netp.onnx');
 
-    const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    if (hasWebGpu) {
-      try {
-        this.session = await ort.InferenceSession.create(modelUrl, {
-          executionProviders: ['webgpu'],
-          graphOptimizationLevel: 'all',
-        });
-        this.backend = 'webgpu';
-        return;
-      } catch (error) {
-        console.warn('U2NetP WebGPU initialization failed, falling back to WASM.', error);
-      }
-    }
-
+    // U2NetP uses MaxPool with ceil_mode. ONNX Runtime WebGPU currently
+    // cannot execute that kernel reliably on browsers such as Android Chrome.
+    // The model is only ~4.4 MiB, so WASM is the compatibility-first backend.
     this.session = await ort.InferenceSession.create(modelUrl, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
     });
-    this.backend = 'wasm';
   }
 
   async removeBackground(image: ImageBitmap) {
