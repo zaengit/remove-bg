@@ -18,6 +18,32 @@ test.describe('Remove BG editor', () => {
     await expect(page.getByTitle('Brush')).toHaveCount(0);
   });
 
+  test('exposes installable PWA metadata and registers a service worker', async ({ page }) => {
+    await page.goto('/');
+
+    const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+    expect(manifestHref).toBe('/manifest.webmanifest');
+
+    const response = await page.request.get('/manifest.webmanifest');
+    expect(response.ok()).toBe(true);
+    const manifest = await response.json();
+    expect(manifest.name).toBe('Remove BG');
+    expect(manifest.display).toBe('standalone');
+    expect(manifest.icons?.length).toBeGreaterThan(0);
+
+    const registration = await page.evaluate(async () => {
+      if (!('serviceWorker' in navigator)) return null;
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const current = await navigator.serviceWorker.getRegistration();
+        if (current) return current.scope;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return null;
+    });
+    expect(registration).not.toBeNull();
+  });
+
   test('shows unavailable state when local ONNX assets are absent', async ({ page }) => {
     await page.goto('/');
 
