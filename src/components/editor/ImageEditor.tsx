@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, Sparkles, Upload } from 'lucide-react';
-import { MobileSamOnnxModel } from '../../lib/onnx/model';
-import type { ImageEmbedding, PromptPoint } from '../../types/editor';
+import { BackgroundRemovalOnnxModel } from '../../lib/onnx/background-model';
 
-const model = new MobileSamOnnxModel();
+const model = new BackgroundRemovalOnnxModel();
 
 export function ImageEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -11,7 +10,6 @@ export function ImageEditor() {
   const bitmapRef = useRef<ImageBitmap | null>(null);
   const originalRef = useRef<ImageData | null>(null);
   const currentRef = useRef<ImageData | null>(null);
-  const embeddingRef = useRef<ImageEmbedding | null>(null);
 
   const [status, setStatus] = useState('Loading AI model...');
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +24,7 @@ export function ImageEditor() {
       .load()
       .then(() => {
         setIsModelReady(true);
-        setStatus('AI ready');
+        setStatus(`AI ready · ${model.activeBackend.toUpperCase()}`);
       })
       .catch((e: Error) => {
         setStatus('AI unavailable');
@@ -75,7 +73,6 @@ export function ImageEditor() {
   const loadImage = async (file: File) => {
     setError(null);
     setHasResult(false);
-    embeddingRef.current = null;
 
     if (file.size > 50 * 1024 * 1024) {
       setError('Image is too large (50 MB maximum).');
@@ -83,6 +80,7 @@ export function ImageEditor() {
     }
 
     try {
+      bitmapRef.current?.close();
       const bitmap = await createImageBitmap(file);
       bitmapRef.current = bitmap;
 
@@ -96,57 +94,34 @@ export function ImageEditor() {
       currentRef.current = new ImageData(new Uint8ClampedArray(data.data), data.width, data.height);
       setHasImage(true);
       setVersion((v) => v + 1);
-
-      if (!isModelReady) {
-        setStatus('AI unavailable');
-        return;
-      }
-
-      setStatus('Analyzing image...');
-      embeddingRef.current = await model.encodeImage(bitmap);
-      setStatus('Ready to remove background');
+      setStatus(isModelReady ? 'Ready to remove background' : 'Waiting for AI model...');
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      setError(`Image analysis failed: ${message}`);
-      setStatus('AI unavailable');
+      setError(`Image loading failed: ${message}`);
     }
   };
 
   const removeBackground = async () => {
-    const image = currentRef.current;
+    const bitmap = bitmapRef.current;
     const original = originalRef.current;
-    const embedding = embeddingRef.current;
-    if (!image || !original || !embedding || isProcessing) return;
+    if (!bitmap || !original || !isModelReady || isProcessing) return;
 
     setIsProcessing(true);
     setError(null);
     setStatus('Removing background...');
 
     try {
-      const w = image.width;
-      const h = image.height;
-      const marginX = Math.max(1, w * 0.04);
-      const marginY = Math.max(1, h * 0.04);
-      const points: PromptPoint[] = [
-        { x: w * 0.5, y: h * 0.5, label: 1 },
-        { x: marginX, y: marginY, label: 0 },
-        { x: w - marginX, y: marginY, label: 0 },
-        { x: marginX, y: h - marginY, label: 0 },
-        { x: w - marginX, y: h - marginY, label: 0 },
-      ];
-
-      const result = await model.predictMask({ embedding, points });
+      const mask = await model.removeBackground(bitmap);
       const output = new ImageData(new Uint8ClampedArray(original.data), original.width, original.height);
 
-      for (let i = 0; i < result.mask.length; i++) {
-        const subjectAlpha = result.mask[i];
+      for (let i = 0; i < mask.length; i++) {
         const originalAlpha = original.data[i * 4 + 3];
-        output.data[i * 4 + 3] = Math.round((originalAlpha * subjectAlpha) / 255);
+        output.data[i * 4 + 3] = Math.round((originalAlpha * mask[i]) / 255);
       }
 
       currentRef.current = output;
       setHasResult(true);
-      setStatus(`Background removed · confidence ${(result.score * 100).toFixed(0)}%`);
+      setStatus(`Background removed · ${model.activeBackend.toUpperCase()}`);
       setVersion((v) => v + 1);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -176,7 +151,7 @@ export function ImageEditor() {
     }, 'image/png');
   };
 
-  const canRemove = hasImage && !!embeddingRef.current && isModelReady && !isProcessing;
+  const canRemove = hasImage && isModelReady && !isProcessing;
 
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
@@ -206,7 +181,7 @@ export function ImageEditor() {
               <div className="rounded-2xl border border-white/10 bg-neutral-900/90 p-8 text-center shadow-2xl">
                 <Upload className="mx-auto mb-3 text-blue-400" />
                 <h2 className="text-lg font-semibold">Upload an image to start</h2>
-                <p className="mt-1 text-sm text-neutral-400">AI removes the background automatically in your browser.</p>
+                <p className="mt-1 text-sm text-neutral-400">AI automatically keeps the foreground and removes the background.</p>
               </div>
             </div>
           )}
@@ -218,18 +193,20 @@ export function ImageEditor() {
           )}
         </section>
 
-        <div className="flex shrink-0 items-center justify-center gap-3 border-t border-white/10 bg-neutral-950 p-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-white/10 bg-neutral-950 p-4">
           <button
+            type="button"
             onClick={removeBackground}
             disabled={!canRemove}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-w-44 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isProcessing ? 'Removing Background...' : 'Remove Background'}
+            {isProcessing ? 'Removing...' : 'Remove Background'}
           </button>
           <button
+            type="button"
             onClick={download}
             disabled={!hasResult}
-            className="flex items-center gap-2 rounded-xl border border-white/10 px-5 py-3 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex min-w-44 items-center justify-center gap-2 rounded-xl border border-white/10 px-5 py-3 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Download size={16} /> Download PNG
           </button>
