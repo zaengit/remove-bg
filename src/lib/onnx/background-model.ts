@@ -3,6 +3,9 @@ import * as ort from 'onnxruntime-web';
 const INPUT_SIZE = 320;
 const MEAN = [0.485, 0.456, 0.406] as const;
 const STD = [0.229, 0.224, 0.225] as const;
+const MODEL_VERSION = '309c8469';
+const MODEL_PATH = `models/u2netp-${MODEL_VERSION}.onnx`;
+const MODEL_CACHE = `remove-bg-models-${MODEL_VERSION}`;
 
 function appUrl(path: string) {
   const base = new URL(import.meta.env.BASE_URL, globalThis.location.origin);
@@ -16,6 +19,29 @@ function configureWasmRuntime() {
     ? Math.min(4, navigator.hardwareConcurrency || 1)
     : 1;
   ort.env.wasm.simd = true;
+}
+
+async function loadModelBytes() {
+  const modelUrl = appUrl(MODEL_PATH);
+
+  if ('caches' in globalThis) {
+    try {
+      const cache = await caches.open(MODEL_CACHE);
+      const cached = await cache.match(modelUrl);
+      if (cached) return await cached.arrayBuffer();
+
+      const response = await fetch(modelUrl, { cache: 'force-cache' });
+      if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+      await cache.put(modelUrl, response.clone());
+      return await response.arrayBuffer();
+    } catch (error) {
+      console.warn('Model Cache Storage failed, using normal browser fetch.', error);
+    }
+  }
+
+  const response = await fetch(modelUrl, { cache: 'force-cache' });
+  if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+  return await response.arrayBuffer();
 }
 
 function preprocess(image: ImageBitmap) {
@@ -98,15 +124,13 @@ export class BackgroundRemovalOnnxModel {
 
   async load() {
     configureWasmRuntime();
-    const modelUrl = appUrl('models/u2netp.onnx');
+    const modelBytes = await loadModelBytes();
 
-    // U2NetP uses MaxPool with ceil_mode. ONNX Runtime WebGPU currently
-    // cannot execute that kernel reliably on browsers such as Android Chrome.
-    // The model is only ~4.4 MiB, so WASM is the compatibility-first backend.
-    this.session = await ort.InferenceSession.create(modelUrl, {
+    this.session = await ort.InferenceSession.create(modelBytes, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
     });
+    this.backend = 'wasm';
   }
 
   async removeBackground(image: ImageBitmap) {
