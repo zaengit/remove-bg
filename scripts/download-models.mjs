@@ -2,10 +2,13 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+const MODEL_SHA256 = '309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8';
+const MODEL_VERSION = MODEL_SHA256.slice(0, 8);
+
 const model = {
   url: 'https://huggingface.co/edgetools/u2netp/resolve/25dee37/u2netp.onnx?download=true',
-  path: 'public/models/u2netp.onnx',
-  sha256: '309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8',
+  path: `public/models/u2netp-${MODEL_VERSION}.onnx`,
+  sha256: MODEL_SHA256,
 };
 
 console.log(`Downloading ${model.path}...`);
@@ -21,4 +24,4 @@ if (digest !== model.sha256) {
 await mkdir(dirname(model.path), { recursive: true });
 await writeFile(model.path, bytes);
 console.log(`Verified ${model.path} (${(bytes.length / 1024 / 1024).toFixed(2)} MiB)`);
-console.log('U2NetP model is ready.');
+console.log('U2NetP model is ready with a content-versioned filename.');
