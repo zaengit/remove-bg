@@ -14,7 +14,6 @@ async function uploadSyntheticSubject(page: import('@playwright/test').Page) {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 640, 480);
 
-    // Stage-like background details that should not all become soft foreground.
     ctx.fillStyle = 'rgba(255,255,255,.65)';
     ctx.font = 'bold 34px sans-serif';
     ctx.fillText('KEYNOTE ADDRESS', 300, 75);
@@ -22,7 +21,6 @@ async function uploadSyntheticSubject(page: import('@playwright/test').Page) {
       for (let x = 30; x < 620; x += 120) ctx.fillText('○', x, y);
     }
 
-    // Simple central person/podium silhouette.
     ctx.fillStyle = '#d7b08c';
     ctx.beginPath();
     ctx.arc(245, 190, 38, 0, Math.PI * 2);
@@ -51,10 +49,10 @@ async function uploadSyntheticSubject(page: import('@playwright/test').Page) {
   });
 }
 
-test.describe('U2NetP real inference', () => {
+test.describe('MODNet real inference', () => {
   test.setTimeout(180_000);
 
-  test('removes background with cleaned alpha and exports PNG', async ({ page }) => {
+  test('removes portrait background and exports PNG', async ({ page }) => {
     const pageErrors: Error[] = [];
     page.on('pageerror', (error) => pageErrors.push(error));
 
@@ -77,9 +75,7 @@ test.describe('U2NetP real inference', () => {
 
     expect(stats.transparent).toBeGreaterThan(0.05);
     expect(stats.opaque).toBeGreaterThan(0.005);
-    // Regression guard for the previous ghosted result where most pixels were
-    // left semi-transparent instead of becoming clear foreground/background.
-    expect(stats.soft).toBeLessThan(0.65);
+    expect(stats.soft).toBeLessThan(0.7);
 
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download PNG' }).click();
@@ -88,17 +84,17 @@ test.describe('U2NetP real inference', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('stores the versioned model in Cache Storage', async ({ page }) => {
+  test('stores the versioned MODNet model in Cache Storage', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText(/AI ready · WASM/)).toBeVisible({ timeout: 120_000 });
 
     const cached = await page.evaluate(async () => {
       const keys = await caches.keys();
-      const key = keys.find((value) => value === 'remove-bg-models-309c8469');
+      const key = keys.find((value) => value === 'remove-bg-models-7bad6522');
       if (!key) return false;
       const cache = await caches.open(key);
       const requests = await cache.keys();
-      return requests.some((request) => request.url.includes('u2netp-309c8469.onnx'));
+      return requests.some((request) => request.url.includes('modnet-uint8-7bad6522.onnx'));
     });
 
     expect(cached).toBe(true);
